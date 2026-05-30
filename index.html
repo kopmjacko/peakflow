@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="theme-color" content="#3aa6c9">
+<title>ピークフロー記録</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.34.0/dist/tabler-icons.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=Fjalla+One&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --blue:#3aa6c9; --blue-dk:#2d87a8; --blue-bg:#f1f6f8; --blue-chip:#e7f3f6;
+    --ink:#2f4858; --mute:#6a8694; --faint:#9fbcc2; --border:#e7ecf0; --line:#eef3f5;
+    --green:#3b9e6f; --red:#d36b6b;
+    --page:#eef1f4; --surface:#f3f6f8; --card:#ffffff;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent;}
+  html,body{height:100%;}
+  body{
+    margin:0; background:var(--page); color:var(--ink);
+    font-family:"DM Sans","Noto Sans JP",-apple-system,BlinkMacSystemFont,sans-serif;
+    font-weight:500; letter-spacing:-0.01em;
+  }
+  /* Full-height responsive shell. Baseline: iPhone 14 (390x844). The wrap fills the
+     viewport height and its main content flexes to fit without scrolling. */
+  .wrap{
+    max-width:420px; margin:0 auto;
+    min-height:100svh; min-height:100dvh;
+    padding:calc(env(safe-area-inset-top) + 1.2vh) 14px calc(env(safe-area-inset-bottom) + 1.2vh);
+    display:flex; flex-direction:column;
+  }
+  .main{flex:1 1 auto; display:flex; flex-direction:column; gap:1.4vh; min-height:0;}
+  button{font-family:inherit; cursor:pointer;}
+  input[type=range]{accent-color:var(--blue);}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; box-shadow:0 2px 10px rgba(90,130,160,0.07);}
+  .roundbtn{width:clamp(48px,7.2vh,58px); height:clamp(48px,7.2vh,58px); font-size:clamp(24px,3.6vh,30px); flex-shrink:0; border-radius:50%; border:1px solid #d4e8ec; background:#f1f6f8; color:var(--blue-dk); display:flex; align-items:center; justify-content:center; transition:transform .1s;}
+  .roundbtn:active{transform:scale(.92);}
+  .quick{font-size:17px; padding:9px 10px; border-radius:8px; border:1px solid var(--border); background:#f4f8fa; color:#5b7f8c; transition:transform .1s; white-space:nowrap;}
+  .quick:active{transform:scale(.94);}
+  #bigVal{display:inline-block; font-family:"Fjalla One",sans-serif; font-size:clamp(68px,11vh,92px); font-weight:400; line-height:1; letter-spacing:-1px; color:var(--blue-dk); transition:transform .18s cubic-bezier(.34,1.56,.64,1);}
+  #saveBtn{width:100%; height:56px; font-size:18px; background:linear-gradient(180deg,#43b0d2,#2f93b6); color:#fff; border:none; border-radius:8px; font-weight:700; transition:transform .12s, filter .25s; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 4px 12px rgba(47,147,182,0.24);}
+  #saveBtn:active{transform:scale(.97);}
+  .stat{background:var(--blue-bg); border-radius:10px; padding:14px 16px;}
+  table{width:100%; border-collapse:collapse;}
+  .delBtn{width:32px; height:32px; padding:0; font-size:15px; border:none; background:none; color:var(--faint);}
+  input[type=time]{border:1px solid #d4e8ec; border-radius:6px; padding:7px 8px; color:var(--ink); font-family:inherit; font-size:14px;}
+  #celebrate{position:absolute; inset:0; display:none; align-items:center; justify-content:center; background:rgba(243,246,248,.96); flex-direction:column; gap:12px; border-radius:12px;}
+  #checkCircle{width:92px; height:92px; border-radius:50%; background:linear-gradient(180deg,#43b0d2,#2f93b6); display:flex; align-items:center; justify-content:center; transform:scale(0); transition:transform .42s cubic-bezier(.34,1.56,.64,1);}
+  #celebrateText{font-size:17px; color:var(--blue-dk); font-weight:700; opacity:0; transition:opacity .3s;}
+  /* header */
+  .topbar{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; padding:2px 2px;}
+  .topbar .title{font-size:20px; font-weight:700; letter-spacing:-0.02em; color:var(--ink);}
+  .logo-badge{width:30px; height:30px; border-radius:7px; background:linear-gradient(180deg,#43b0d2,#2f93b6); display:flex; align-items:center; justify-content:center; color:#fff; flex-shrink:0;}
+  #chartScroll::-webkit-scrollbar{display:none; height:0; width:0;}
+  .iconbtn{width:42px; height:42px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--ink); display:flex; align-items:center; justify-content:center; font-size:20px;}
+  /* dropdown submenu */
+  #scrim{position:fixed; inset:0; background:transparent; opacity:0; pointer-events:none; z-index:40;}
+  #scrim.open{opacity:1; pointer-events:auto;}
+  #menuAnchor{position:relative;}
+  #drawer{position:absolute; top:calc(100% + 8px); right:0; width:300px; max-width:84vw; background:var(--card); z-index:50; border:1px solid var(--border); border-radius:12px; box-shadow:0 10px 30px rgba(60,100,150,0.18); padding:14px; opacity:0; transform:translateY(-6px) scale(0.98); transform-origin:top right; pointer-events:none; transition:opacity .16s, transform .16s;}
+  #drawer.open{opacity:1; transform:translateY(0) scale(1); pointer-events:auto;}
+  .drawer-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:12px;}
+  .drawer-head .title{font-size:15px; font-weight:700; color:var(--ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="topbar">
+    <div style="display:flex; align-items:center; gap:10px;">
+      <div class="logo-badge"><i class="ti ti-lungs" style="font-size:17px;"></i></div>
+      <span class="title">ピークフロー</span>
+    </div>
+    <div id="menuAnchor">
+      <button id="menuBtn" class="iconbtn" aria-label="メニューを開く"><i class="ti ti-menu-2"></i></button>
+      <div id="drawer" role="dialog" aria-label="メニュー">
+        <div class="drawer-head">
+          <span class="title">メニュー</span>
+          <button id="closeDrawer" class="iconbtn" aria-label="閉じる" style="width:34px; height:34px;"><i class="ti ti-x"></i></button>
+        </div>
+
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <i class="ti ti-bell" style="font-size:16px; color:var(--mute);"></i><span style="font-size:14px; font-weight:700;">記録リマインダー</span>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0;">
+          <span style="font-size:14px;">朝</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="time" id="morningTime" value="08:00">
+            <button id="setMorning" style="height:34px; font-size:13px; padding:0 12px; border:1px solid #d4e8ec; background:var(--blue-bg); color:var(--blue-dk); border-radius:6px;">設定</button>
+          </div>
+        </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-top:1px solid var(--line);">
+          <span style="font-size:14px;">夜</span>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <input type="time" id="nightTime" value="22:00">
+            <button id="setNight" style="height:34px; font-size:13px; padding:0 12px; border:1px solid #d4e8ec; background:var(--blue-bg); color:var(--blue-dk); border-radius:6px;">設定</button>
+          </div>
+        </div>
+        <div id="reminderNote" style="font-size:12px; color:var(--mute); margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+  <div class="recordCard card" style="border-radius:12px; padding:3.78vh 18px; position:relative; overflow:hidden; display:flex; flex-direction:column; gap:1.8vh; flex:0 0 auto; min-height:0;">
+      <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
+        <span id="periodLabel" style="font-size:15px; color:var(--mute); letter-spacing:0.3px;"></span>
+        <button id="periodToggle" aria-label="朝夜を切り替え" style="font-size:12px; color:#6aa3ad; background:none; border:none; padding:2px 6px; text-decoration:underline;">切替</button>
+      </div>
+
+      <div>
+        <div style="display:flex; align-items:center; justify-content:center; gap:18px;">
+          <button id="minusBtn" class="roundbtn" aria-label="10減らす">−</button>
+          <div style="text-align:center; min-width:140px;"><span id="bigVal">500</span></div>
+          <button id="plusBtn" class="roundbtn" aria-label="10増やす">+</button>
+        </div>
+        <div style="text-align:center; font-size:13px; color:var(--faint); margin-top:0.6vh;">L/min</div>
+      </div>
+
+      <div style="display:flex; gap:8px; justify-content:center; flex-wrap:nowrap;">
+        <button class="quick" data-v="550">550</button>
+        <button class="quick" data-v="600">600</button>
+        <button class="quick" data-v="650">650</button>
+        <button class="quick" data-v="700">700</button>
+      </div>
+
+      <div style="display:flex; gap:10px; align-items:stretch; margin-top:1.8vh;">
+        <button id="cancelBtn" style="display:none; flex:0 0 auto; width:56px; height:56px; padding:0; background:none; color:var(--mute); border:1px solid var(--border); border-radius:8px; font-weight:500; align-items:center; justify-content:center;" aria-label="編集をやめる"><i class="ti ti-arrow-back-up" style="font-size:20px;"></i></button>
+        <button id="saveBtn" style="flex:1 1 auto;"><i class="ti ti-check" style="font-size:19px;"></i>記録</button>
+        <button id="deleteBtn" style="display:none; flex:0 0 auto; width:56px; height:56px; padding:0; background:none; color:var(--red); border:1px solid #ecc9c9; border-radius:8px; font-weight:500; align-items:center; justify-content:center;" aria-label="この記録を削除"><i class="ti ti-trash" style="font-size:20px;"></i></button>
+      </div>
+
+    <div id="celebrate">
+      <div id="checkCircle"><i class="ti ti-check" style="font-size:50px; color:#fff;"></i></div>
+      <div id="celebrateText">記録しました</div>
+    </div>
+  </div>
+
+  <div class="trendCard card" style="border-radius:12px; padding:3.15vh 12px; flex:0.9 1 0; display:flex; flex-direction:column; min-height:150px;">
+    <div id="chartScroll" style="position:relative; flex:1 1 auto; min-height:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none;">
+      <div id="chartInner" style="position:relative; height:100%; cursor:pointer;"><canvas id="chart"></canvas></div>
+    </div>
+    <div style="display:flex; justify-content:center; padding-top:6px; flex:0 0 auto;">
+      <div style="display:inline-flex; align-items:center; gap:5px; font-size:15px; color:var(--blue-dk); background:var(--blue-chip); border-radius:999px; padding:4px 12px;">
+        <i class="ti ti-flame" style="font-size:15px;"></i><span id="streakText">記録をはじめましょう</span>
+      </div>
+    </div>
+  </div>
+  </div>
+
+</div><!-- /.wrap -->
+
+<div id="scrim"></div>
+
+
+<script>
+(function(){
+  var BLUE='#3aa6c9', BLUEDK='#2d87a8', MUTE='#7e93a8', INK='#33536f', GREEN='#3b9e6f', RED='#d36b6b';
+  var value=500, period='朝';
+  var records=[];
+  var currentWx='不明';
+  var loc=null;
+  var reminders={};
+  // editSlot: when set, the record UI edits a specific past slot instead of "now".
+  //   {dayKey, period, dateObj, label}  — null means normal (today / current time).
+  var editSlot=null;
+  var curDayMeta=[];   // slot metadata from the latest render (for tap handling)
+  var curSlotIndex={}; // slot key -> index map from the latest render
+
+  function lsGet(k){ try{ return JSON.parse(localStorage.getItem(k)); }catch(e){ return null; } }
+  function lsSet(k,v){ try{ localStorage.setItem(k, JSON.stringify(v)); }catch(e){} }
+
+  // drawer (menu) open/close
+  var drawer=document.getElementById('drawer'), scrim=document.getElementById('scrim');
+  function openDrawer(){ drawer.classList.add('open'); scrim.classList.add('open'); }
+  function closeDrawer(){ drawer.classList.remove('open'); scrim.classList.remove('open'); }
+  document.getElementById('menuBtn').addEventListener('click', function(e){
+    e.stopPropagation();
+    if(drawer.classList.contains('open')) closeDrawer(); else openDrawer();
+  });
+  document.getElementById('closeDrawer').addEventListener('click', closeDrawer);
+  scrim.addEventListener('click', closeDrawer);
+  drawer.addEventListener('click', function(e){ e.stopPropagation(); });
+
+  var bigVal=document.getElementById('bigVal');
+  function pop(){ bigVal.style.transform='scale(1.12)'; setTimeout(function(){ bigVal.style.transform='scale(1)'; },140); }
+  function setVal(v,doPop){ value=Math.max(500,Math.min(800,v)); bigVal.textContent=value; if(doPop) pop(); }
+  document.getElementById('minusBtn').addEventListener('click',function(){ setVal(value-10,true); });
+  document.getElementById('plusBtn').addEventListener('click',function(){ setVal(value+10,true); });
+  document.querySelectorAll('.quick').forEach(function(q){
+    q.addEventListener('click',function(){ setVal(parseInt(q.getAttribute('data-v'),10),true); });
+  });
+
+  var periodLabel=document.getElementById('periodLabel');
+  function setPeriod(p){
+    period=p;
+    updateRecordHeader();
+  }
+  function updateRecordHeader(){
+    var tg=document.getElementById('periodToggle');
+    if(editSlot){
+      var d=editSlot.dateObj;
+      periodLabel.innerHTML='<span style="color:'+BLUEDK+'; font-weight:700;">'+(d.getMonth()+1)+'/'+d.getDate()+' '+editSlot.period+'</span>'+
+        ' <span style="font-size:12px; color:'+MUTE+';">を編集中</span>';
+      if(tg){ tg.style.display='none'; }
+    } else {
+      periodLabel.innerHTML=period==='朝'
+        ? '<i class="ti ti-sunrise" style="font-size:16px; vertical-align:-3px; margin-right:4px;"></i>朝の記録'
+        : '<i class="ti ti-moon" style="font-size:16px; vertical-align:-3px; margin-right:4px;"></i>夜の記録';
+      if(tg){ tg.style.display='none'; }  // no manual 朝/夜 toggle; auto by time
+    }
+  }
+  document.getElementById('periodToggle').addEventListener('click',function(){
+    if(editSlot){ exitEdit(); render(); }
+  });
+  setPeriod(new Date().getHours()<12?'朝':'夜');
+
+  // Tap a 朝/夜 zone on the graph to edit that slot with the record UI above.
+  function selectSlot(idx){
+    var dm=curDayMeta[idx];
+    if(!dm) return;
+    editSlot={dayKey:dm.dayKey, period:dm.period, dateObj:dm.dateObj};
+    period=dm.period;
+    // preload existing value for that slot if present
+    var existing=null;
+    records.forEach(function(r){
+      if(dayKey(new Date(r.ts))===dm.dayKey && r.period===dm.period) existing=r;
+    });
+    setVal(existing ? existing.value : 500, false);
+    updateRecordHeader();
+    updateSaveLabel(existing);
+    noAnim=true; render();
+  }
+  function exitEdit(){
+    editSlot=null;
+    setPeriod(new Date().getHours()<12?'朝':'夜');
+    updateSaveLabel(null);
+  }
+  function updateSaveLabel(existing){
+    var btn=document.getElementById('saveBtn');
+    var del=document.getElementById('deleteBtn');
+    var cancel=document.getElementById('cancelBtn');
+    if(btn){
+      if(editSlot){
+        btn.innerHTML='<i class="ti ti-check" style="font-size:19px;"></i>'+(existing?'上書き':'この日時で記録');
+      } else {
+        btn.innerHTML='<i class="ti ti-check" style="font-size:19px;"></i>記録';
+      }
+    }
+    if(del){ del.style.display=(editSlot && existing)?'flex':'none'; }
+    if(cancel){ cancel.style.display=editSlot?'flex':'none'; }
+  }
+
+  function p2(n){return (n<10?'0':'')+n;}
+  function fmtNow(d){ return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes()); }
+  function dayKey(d){ return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
+
+  var WX={0:'快晴',1:'晴れ',2:'一部曇り',3:'曇り',45:'霧',48:'霧',51:'霧雨',53:'霧雨',55:'霧雨',56:'霧雨',57:'霧雨',61:'小雨',63:'雨',65:'大雨',66:'雨',67:'雨',71:'小雪',73:'雪',75:'大雪',77:'雪',80:'にわか雨',81:'にわか雨',82:'激しい雨',85:'にわか雪',86:'にわか雪',95:'雷雨',96:'雷雨',99:'雷雨'};
+  function wxEmoji(text){
+    if(!text) return '';
+    if(text.indexOf('雷')>=0) return '⛈️';
+    if(text.indexOf('雪')>=0) return '❄️';
+    if(text.indexOf('雨')>=0 || text.indexOf('霧雨')>=0) return '🌧️';
+    if(text.indexOf('霧')>=0) return '🌫️';
+    if(text.indexOf('快晴')>=0) return '☀️';
+    if(text.indexOf('一部曇り')>=0) return '⛅';
+    if(text.indexOf('曇')>=0) return '☁️';
+    if(text.indexOf('晴')>=0) return '☀️';
+    return '';
+  }
+  function fetchWeather(lat,lon){
+    fetch('https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+'&current=temperature_2m,weather_code')
+      .then(function(r){return r.json();})
+      .then(function(d){ var c=d.current; currentWx=(WX[c.weather_code]||'不明')+' '+Math.round(c.temperature_2m)+'℃'; })
+      .catch(function(){ currentWx='不明'; });
+  }
+  // Weather for a specific past date + period (朝≈9時 / 夜≈21時), via hourly data.
+  function fetchWeatherForDate(dObj, per, cb){
+    var lat=(loc&&loc.lat)?loc.lat:35.681, lon=(loc&&loc.lon)?loc.lon:139.686;
+    var ds=dObj.getFullYear()+'-'+p2(dObj.getMonth()+1)+'-'+p2(dObj.getDate());
+    var hour=(per==='朝')?9:21;
+    var url='https://api.open-meteo.com/v1/forecast?latitude='+lat+'&longitude='+lon+
+      '&hourly=temperature_2m,weather_code&start_date='+ds+'&end_date='+ds;
+    fetch(url).then(function(r){return r.json();}).then(function(d){
+      try{
+        var times=d.hourly.time, codes=d.hourly.weather_code, temps=d.hourly.temperature_2m;
+        var target=ds+'T'+p2(hour)+':00';
+        var idx=times.indexOf(target);
+        if(idx<0) idx=Math.min(hour, times.length-1);
+        var wx=(WX[codes[idx]]||'不明')+' '+Math.round(temps[idx])+'℃';
+        cb(wx);
+      }catch(e){ cb('—'); }
+    }).catch(function(){ cb('—'); });
+  }
+  function useLoc(lat,lon){ loc={lat:lat,lon:lon}; lsSet('peakflow:loc',loc); fetchWeather(lat,lon); }
+  function acquireLocation(){
+    if(navigator.geolocation){
+      navigator.geolocation.getCurrentPosition(
+        function(p){ useLoc(p.coords.latitude.toFixed(3),p.coords.longitude.toFixed(3)); },
+        function(){ fetchWeather(35.681,139.686); }, {timeout:8000,enableHighAccuracy:true});
+    } else { fetchWeather(35.681,139.686); }
+  }
+
+  // Reminders via Notification API (works while page/PWA is open or backgrounded on supporting browsers)
+  function renderReminderNote(){
+    var note=document.getElementById('reminderNote');
+    if(!('Notification' in window)){ note.textContent='この端末では通知に対応していません。'; return; }
+    if(Notification.permission==='granted'){ note.textContent='アプリを開いている間、設定時刻に通知します。'; }
+    else if(Notification.permission==='denied'){ note.textContent='通知がブロックされています。ブラウザ設定で許可してください。'; }
+    else { note.textContent='「設定」を押すと通知の許可を求めます。'; }
+  }
+  function setReminder(which, t){
+    if(!('Notification' in window)) return;
+    function save(){ reminders[which]=t; lsSet('peakflow:reminders',reminders); renderReminderNote(); }
+    if(Notification.permission==='granted'){ save(); }
+    else { Notification.requestPermission().then(function(){ save(); }); }
+  }
+  document.getElementById('setMorning').addEventListener('click',function(){ setReminder('morning', document.getElementById('morningTime').value); });
+  document.getElementById('setNight').addEventListener('click',function(){ setReminder('night', document.getElementById('nightTime').value); });
+
+  var firedToday={};
+  setInterval(function(){
+    if(Notification.permission!=='granted') return;
+    var now=new Date(); var hm=p2(now.getHours())+':'+p2(now.getMinutes()); var dk=dayKey(now);
+    ['morning','night'].forEach(function(w){
+      if(reminders[w]===hm && firedToday[w+dk]!==true){
+        firedToday[w+dk]=true;
+        try{ new Notification('ピークフロー記録', {body:(w==='morning'?'朝':'夜')+'の測定値を記録しましょう'}); }catch(e){}
+      }
+    });
+  },20000);
+
+  function computeStreak(){
+    if(!records.length) return 0;
+    var days={}; records.forEach(function(r){ days[dayKey(new Date(r.ts))]=true; });
+    var streak=0; var d=new Date();
+    if(!days[dayKey(d)]) d.setDate(d.getDate()-1);
+    while(days[dayKey(d)]){ streak++; d.setDate(d.getDate()-1); }
+    return streak;
+  }
+  function updateStreakChip(){
+    var s=computeStreak(); var el=document.getElementById('streakText');
+    if(s<=0){ el.textContent=records.length?'今日も記録しましょう':'記録をはじめましょう'; }
+    else { el.textContent=s+'日連続で記録中'; }
+  }
+
+  var chart;
+
+  var justAdded=false;
+  var noAnim=false;   // when true, render without any animation (e.g. slot selection)
+  var animKey=null;   // slot key (dayKey_period) to animate with the line-extend effect
+  var keepScroll=false; // when true, preserve current horizontal scroll (don't jump)
+  function render(){
+    var sorted=records.slice().sort(function(a,b){return a.ts-b.ts;});
+
+    // Build a slot grid spanning from the earliest record's day (min: 3-day window)
+    // through today. Each day has 朝 then 夜 slots. The chart canvas is made wider
+    // than its container so the user can scroll left to go back in time.
+    var dayList=[];
+    var base=new Date(); base=new Date(base.getFullYear(),base.getMonth(),base.getDate());
+    var startDay;
+    if(sorted.length){
+      var first=new Date(sorted[0].ts); startDay=new Date(first.getFullYear(),first.getMonth(),first.getDate());
+    } else {
+      startDay=new Date(base.getTime()-2*864e5);
+    }
+    // ensure at least a 3-day window
+    var minStart=new Date(base.getTime()-2*864e5);
+    if(startDay>minStart) startDay=minStart;
+    var totalDays=Math.round((base-startDay)/864e5)+1;
+    for(var di=0; di<totalDays; di++){
+      var d=new Date(startDay.getTime()+di*864e5);
+      dayList.push({key:dayKey(d), date:d});
+    }
+
+    var labels=[], dayMeta=[], data=[], slotIndex={};
+    dayList.forEach(function(dy){
+      ['朝','夜'].forEach(function(per){
+        var idx=labels.length;
+        slotIndex[dy.key+'_'+per]=idx;
+        labels.push(per);
+        dayMeta.push({day:dy.date.getDate(), month:dy.date.getMonth()+1, dow:dy.date.getDay(), period:per, firstOfDay:(per==='朝'), dateObj:dy.date, dayKey:dy.key});
+        data.push(null);
+      });
+    });
+    var slotWx=new Array(data.length).fill('');
+    sorted.forEach(function(r){
+      var k=dayKey(new Date(r.ts))+'_'+r.period;
+      var i=slotIndex[k];
+      if(i!=null){ data[i]=r.value; slotWx[i]=r.wx; }
+    });
+    var recent=sorted; // history table still shows all records
+    curDayMeta=dayMeta; // expose for tap handling
+    curSlotIndex=slotIndex; // expose for delete morph
+
+    // canvas width: ~3 days visible per container width; wider when more days exist
+    var DAYS_VISIBLE=3, slotsPerDay=2;
+    var totalSlots=dayList.length*slotsPerDay;
+
+    // index of the slot currently selected for editing (if any)
+    var selIdx=-1;
+    if(editSlot){ var sk=editSlot.dayKey+'_'+editSlot.period; if(slotIndex[sk]!=null) selIdx=slotIndex[sk]; }
+
+    // index of the most recently filled slot (for the add animation + pulse)
+    var lastIdx=-1;
+    for(var i=0;i<data.length;i++){ if(data[i]!=null) lastIdx=i; }
+    // Which point gets the line-extend animation this render:
+    //  - new record: the just-added last point (justAdded)
+    //  - edited past record: the slot named by animKey (set by the save handler)
+    var keyIdx = (animKey!=null && slotIndex[animKey]!=null) ? slotIndex[animKey] : -1;
+    var growIdx = (keyIdx>=0) ? keyIdx : (justAdded ? lastIdx : -1);
+    var animNew = (growIdx>=0) && data[growIdx]!=null && data.filter(function(v){return v!=null;}).length>=2;
+
+    // For the add animation we first render the chart WITHOUT the new point so the
+    // x-axis matches the previous state, then push the new point and let Chart.js
+    // smoothly re-scale the axis while the line grows and the point drops in — all
+    // at once. clipState is kept only for non-add renders (unused here now).
+    var clipState={x:null};
+    var fxPlugin={
+      id:'growFx',
+      beforeDatasetsDraw:function(c){
+        var meta=c.getDatasetMeta(0);
+        var area=c.chartArea, ctx=c.ctx;
+        // With x offset:true each slot occupies a uniform band; the point sits at its
+        // center. band = full plot width / number of slots.
+        var band = (area.right-area.left)/Math.max(1, meta.data.length);
+        // highlight the slot being edited (one full band, centered on its point)
+        if(selIdx>=0 && meta.data[selIdx]){
+          var x=meta.data[selIdx].x;
+          ctx.save();
+          ctx.fillStyle='rgba(58,166,201,0.13)';
+          ctx.fillRect(x-band/2, area.top, band, area.bottom-area.top);
+          ctx.strokeStyle=BLUE; ctx.lineWidth=1.5;
+          ctx.strokeRect(Math.round(x-band/2)+0.5, area.top+0.5, Math.round(band), area.bottom-area.top-1);
+          ctx.restore();
+        }
+        // dashed vertical dividers between every 朝/夜 slot (at each band boundary)
+        ctx.save();
+        ctx.strokeStyle='rgba(100,165,180,0.4)'; ctx.lineWidth=1;
+        ctx.setLineDash([4,4]);
+        meta.data.forEach(function(pt,i){
+          if(!pt||i===0) return;
+          var x=Math.round(pt.x-band/2)+0.5;
+          ctx.beginPath(); ctx.moveTo(x, area.top); ctx.lineTo(x, area.bottom); ctx.stroke();
+        });
+        ctx.setLineDash([]);
+        ctx.restore();
+      },
+      afterDatasetsDraw:function(c){
+        var meta=c.getDatasetMeta(0);
+        var ctx=c.ctx;
+        var area=c.chartArea;
+        var top=area.top;
+        var xs=c.scales.x;
+        // Fixed slot x positions from the axis (NOT the point coords), so labels stay
+        // put even while a point is animating.
+        function slotX(i){ return xs ? xs.getPixelForValue(i) : (meta.data[i]?meta.data[i].x:0); }
+        // Month: large, drawn once per month run, centered over that month's days.
+        ctx.save();
+        ctx.font='700 21px "DM Sans",sans-serif'; ctx.fillStyle=BLUEDK;
+        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
+        var runStart=0;
+        for(var i=0;i<=dayMeta.length;i++){
+          var changed = (i===dayMeta.length) || (dayMeta[i].month!==dayMeta[runStart].month);
+          if(changed){
+            if(dayMeta[runStart]){ ctx.fillText(dayMeta[runStart].month+'月', (slotX(runStart)+slotX(i-1))/2, top-44); }
+            runStart=i;
+          }
+        }
+        ctx.restore();
+        // Day numbers: smaller, centered over each day's 朝+夜 pair, below the month
+        ctx.save();
+        ctx.textBaseline='alphabetic';
+        dayMeta.forEach(function(dm,i){
+          if(!dm||!dm.firstOfDay) return;
+          var hasMate = dayMeta[i+1] && !dayMeta[i+1].firstOfDay;
+          var cx = hasMate ? (slotX(i)+slotX(i+1))/2 : slotX(i);
+          var dayColor = dm.dow===0?'#d36b6b':(dm.dow===6?'#3a8fc9':INK);
+          ctx.font='600 17px "DM Sans",sans-serif'; ctx.fillStyle=dayColor; ctx.textAlign='center';
+          ctx.fillText(String(dm.day), cx, top-8);
+        });
+        ctx.restore();
+        // weather emoji above each filled point
+        ctx.save();
+        ctx.font='14px "DM Sans",sans-serif';
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        meta.data.forEach(function(pt,i){
+          var em=wxEmoji(slotWx[i]);
+          if(em && pt && data[i]!=null){ ctx.fillText(em, pt.x, pt.y-16); }
+        });
+        ctx.restore();
+      }
+    };
+
+    function buildOpts(animOpt){
+      return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+        layout:{padding:{top:62}},
+        animation: animOpt,
+        onClick:function(evt){
+          var xs=chart.scales.x;
+          if(!xs) return;
+          var rect=chart.canvas.getBoundingClientRect();
+          var px=(evt.x!=null?evt.x:(evt.native?evt.native.offsetX:0));
+          // nearest category index to the click x
+          var idx=Math.round(xs.getValueForPixel(px));
+          if(idx<0) idx=0; if(idx>dayMeta.length-1) idx=dayMeta.length-1;
+          selectSlot(idx);
+        },
+        scales:{y:{min:400,max:800,ticks:{stepSize:100,color:MUTE,font:{size:14}},grid:{color:function(ctx){ return (ctx.tick && ctx.tick.value<=400)?'rgba(0,0,0,0)':'rgba(100,165,180,0.13)'; }},border:{display:true, color:'#9fbcc2', width:1.5}},
+          x:{offset:true, ticks:{
+              font:{size:17,weight:'600'}, maxRotation:0, autoSkip:false, align:'center',
+              color:function(ctx){
+                var dm=dayMeta[ctx.index];
+                if(dm){ if(dm.dow===0) return '#d36b6b'; if(dm.dow===6) return '#3a8fc9'; }
+                return MUTE;
+              }
+            }, grid:{display:false}, border:{display:true, color:'#9fbcc2', width:1.5}}}};
+    }
+
+    if(chart) chart.destroy();
+
+    // Size the inner canvas wrapper so ~3 days fill the visible width; if more days
+    // exist the wrapper grows wider and the container scrolls horizontally.
+    var scrollEl=document.getElementById('chartScroll');
+    var innerEl=document.getElementById('chartInner');
+    var contW=scrollEl ? scrollEl.clientWidth : 340;
+    var visibleSlots=DAYS_VISIBLE*slotsPerDay;
+    var innerW=contW;
+    if(totalSlots>visibleSlots){ innerW=Math.round(contW*(totalSlots/visibleSlots)); }
+    if(innerEl) innerEl.style.width=innerW+'px';
+
+    chart=new Chart(document.getElementById('chart'),{
+      type:'line',
+      data:{labels:labels,datasets:[{
+        data: data,
+        borderColor:BLUE, backgroundColor:'rgba(58,166,201,0.13)', tension:0.3, spanGaps:true,
+        pointRadius:6, pointHoverRadius:8, pointBackgroundColor:BLUE,
+        pointBorderColor:'#fff', pointBorderWidth:2, fill:true
+      }]},
+      plugins:[fxPlugin],
+      options:buildOpts((animNew || noAnim) ? {duration:0} : {duration:400})
+    });
+
+    // Scroll to the most recent (right) edge unless the user is editing a past slot,
+    // in which case keep the selected slot in view. When keepScroll is set (e.g. after
+    // overwriting a past record), preserve the current scroll position so the edited
+    // point does not jump out of view.
+    var prevScroll = scrollEl ? scrollEl.scrollLeft : 0;
+    requestAnimationFrame(function(){
+      if(!scrollEl) return;
+      if(keepScroll){
+        scrollEl.scrollLeft=prevScroll;
+      } else if(editSlot && selIdx>=0 && chart.scales.x){
+        var px=chart.scales.x.getPixelForValue(selIdx);
+        scrollEl.scrollLeft=Math.max(0, px - scrollEl.clientWidth/2);
+      } else {
+        scrollEl.scrollLeft=scrollEl.scrollWidth;
+      }
+      keepScroll=false;
+    });
+
+    if(animNew){
+      // Grow the segment: the target point travels from its PREVIOUS filled neighbor's
+      // pixel position out to its own slot position, so the line extends from the
+      // previous coordinate to this one. Old points stay put; no drop-in, no reflow.
+      // Deferred a frame so the (responsive) layout has settled and element pixel
+      // positions are valid; if anything is off we simply leave the points in place.
+      (function(gi){
+        requestAnimationFrame(function(){
+          if(!chart) return;
+          var meta0=chart.getDatasetMeta(0);
+          var prevIdx0=-1;
+          for(var j0=gi-1;j0>=0;j0--){ if(data[j0]!=null){ prevIdx0=j0; break; } }
+          var newEl0=meta0.data[gi];
+          var prevEl0=(prevIdx0>=0)?meta0.data[prevIdx0]:null;
+          if(!newEl0 || !prevEl0) return;
+          var targetX=newEl0.x, targetY=newEl0.y;
+          var startX=prevEl0.x, startY=prevEl0.y;
+          if(!isFinite(targetX)||!isFinite(targetY)||!isFinite(startX)||!isFinite(startY)) return;
+          newEl0.x=startX; newEl0.y=startY; chart.draw();
+          var dur=600, t0=null;
+          function ease(t){ return 1-Math.pow(1-t,3); } // easeOutCubic
+          function step(ts){
+            if(!chart) return;
+            if(t0===null) t0=ts;
+            var p=Math.min(1,(ts-t0)/dur), e=ease(p);
+            newEl0.x=startX+(targetX-startX)*e;
+            newEl0.y=startY+(targetY-startY)*e;
+            chart.draw();
+            if(p<1){ requestAnimationFrame(step); }
+            else { newEl0.x=targetX; newEl0.y=targetY; chart.draw(); }
+          }
+          requestAnimationFrame(step);
+        });
+      })(growIdx);
+    }
+    justAdded=false;
+    noAnim=false;
+    animKey=null;
+  }
+
+  function celebrate(){
+    var c=document.getElementById('celebrate');
+    var circle=document.getElementById('checkCircle');
+    var txt=document.getElementById('celebrateText');
+    var s=computeStreak();
+    txt.textContent = s>1 ? (s+'日連続！') : '記録しました';
+    c.style.display='flex';
+    requestAnimationFrame(function(){ circle.style.transform='scale(1)'; setTimeout(function(){ txt.style.opacity='1'; },150); });
+    setTimeout(function(){
+      circle.style.transform='scale(0)'; txt.style.opacity='0';
+      setTimeout(function(){ c.style.display='none'; },300);
+    },1400);
+  }
+
+  document.getElementById('saveBtn').addEventListener('click',function(){
+    if(editSlot){
+      var d=editSlot.dateObj;
+      var per=editSlot.period, dk=editSlot.dayKey;
+      var val=value;
+      var existing=null;
+      records.forEach(function(r){ if(dayKey(new Date(r.ts))===dk && r.period===per) existing=r; });
+      var when = existing ? new Date(existing.ts) : new Date(d.getFullYear(),d.getMonth(),d.getDate(), per==='朝'?9:21, 0, 0);
+      var isToday = (dk===dayKey(new Date()));
+
+      function commit(wx){
+        records=records.filter(function(r){ return !(dayKey(new Date(r.ts))===dk && r.period===per); });
+        records.push({ts:when.getTime(), label:fmtNow(when), value:val, period:per, wx:wx});
+        lsSet('peakflow:records',records);
+        updateStreakChip();
+        // animate the edited slot's segment (line extends from its previous neighbor)
+        animKey=dk+'_'+per;
+        keepScroll=true;                 // don't jump the view; keep the edited point in place
+        justAdded=false; exitEdit(); render(); celebrate();
+      }
+      if(existing && existing.wx && existing.wx!=='—' && existing.wx!=='不明'){
+        commit(existing.wx);            // keep already-known weather
+      } else if(isToday){
+        commit(currentWx);              // today: current weather already fetched
+      } else {
+        commit('取得中…');              // show immediately (commit already renders once)
+        fetchWeatherForDate(d, per, function(wx){
+          var t=records.filter(function(r){ return dayKey(new Date(r.ts))===dk && r.period===per; })[0];
+          if(t){ t.wx=wx; lsSet('peakflow:records',records); noAnim=true; keepScroll=true; render(); }  // weather fill: no animation, keep view
+        });
+      }
+    } else {
+      var now=new Date();
+      records.push({ts:now.getTime(),label:fmtNow(now),value:value,period:period,wx:currentWx});
+      lsSet('peakflow:records',records);
+      updateStreakChip();
+      justAdded=true; render(); celebrate();
+    }
+  });
+
+  document.getElementById('deleteBtn').addEventListener('click',function(){
+    if(!editSlot) return;
+    var dk=editSlot.dayKey, per=editSlot.period;
+    var sk=dk+'_'+per;
+
+    // Try a morph: animate the deleted point toward the straight line between its
+    // neighbors so the old line smoothly deforms into the post-delete shape.
+    var doneRealDelete=function(){
+      records=records.filter(function(r){ return !(dayKey(new Date(r.ts))===dk && r.period===per); });
+      lsSet('peakflow:records',records);
+      updateStreakChip();
+      justAdded=false; noAnim=true; keepScroll=true; exitEdit(); render();
+    };
+
+    var di=(curSlotIndex && curSlotIndex[sk]!=null)?curSlotIndex[sk]:-1;
+    var cd=chart && chart.data && chart.data.datasets[0] ? chart.data.datasets[0].data : null;
+    if(di>=0 && cd && cd[di]!=null){
+      // find filled neighbors around di
+      var pl=-1, pr=-1;
+      for(var a=di-1;a>=0;a--){ if(cd[a]!=null){ pl=a; break; } }
+      for(var b=di+1;b<cd.length;b++){ if(cd[b]!=null){ pr=b; break; } }
+
+      // Rightmost (newest) point with a left neighbor and no right neighbor:
+      // retract the segment — the point travels back along the line into the
+      // previous point's position (reverse of the add animation).
+      if(pr<0 && pl>=0){
+        var meta=chart.getDatasetMeta(0);
+        var endEl=meta.data[di], prevEl=meta.data[pl];
+        if(endEl && prevEl && isFinite(endEl.x) && isFinite(prevEl.x)){
+          var sX=endEl.x, sY=endEl.y, tX=prevEl.x, tY=prevEl.y;
+          var t0=null, dur=480;
+          function ez(t){ return 1-Math.pow(1-t,3); }
+          function stp(ts){
+            if(!chart) return;
+            if(t0===null) t0=ts;
+            var p=Math.min(1,(ts-t0)/dur), e=ez(p);
+            endEl.x=sX+(tX-sX)*e; endEl.y=sY+(tY-sY)*e;
+            chart.draw();
+            if(p<1){ requestAnimationFrame(stp); }
+            else { doneRealDelete(); }
+          }
+          // hide the dot while retracting so only the line collapses
+          var ds0=chart.data.datasets[0];
+          ds0.pointRadius=cd.map(function(_,i){ return i===di?0:6; });
+          chart.update('none');
+          requestAnimationFrame(stp);
+          return;
+        }
+        doneRealDelete(); return;
+      }
+
+      var targetVal;
+      if(pl>=0 && pr>=0){ targetVal=cd[pl]+(cd[pr]-cd[pl])*((di-pl)/(pr-pl)); }
+      else if(pr>=0){ targetVal=cd[pr]; }
+      else { doneRealDelete(); return; }   // lone point, nothing to morph into
+      // hide the dot, then tween its value onto the neighbor line
+      var ds=chart.data.datasets[0];
+      ds.pointRadius=cd.map(function(_,i){ return i===di?0:6; });
+      var arr=cd.slice(); arr[di]=targetVal; ds.data=arr;
+      chart.options.animation={duration:500, easing:'easeOutCubic',
+        onComplete:function(){ chart.options.animation=false; doneRealDelete(); }};
+      keepScroll=true;
+      chart.update();
+    } else {
+      doneRealDelete();
+    }
+  });
+
+  document.getElementById('cancelBtn').addEventListener('click',function(){
+    if(!editSlot) return;
+    justAdded=false; noAnim=true; exitEdit(); render();
+  });
+
+  // init
+  records=lsGet('peakflow:records')||[];
+  loc=lsGet('peakflow:loc');
+  reminders=lsGet('peakflow:reminders')||{};
+  if(reminders.morning) document.getElementById('morningTime').value=reminders.morning;
+  if(reminders.night) document.getElementById('nightTime').value=reminders.night;
+  updateStreakChip(); render(); renderReminderNote();
+  if(loc && loc.lat){ fetchWeather(loc.lat,loc.lon); } else { acquireLocation(); }
+
+  var rzT;
+  window.addEventListener('resize', function(){
+    clearTimeout(rzT); rzT=setTimeout(function(){ render(); },200);
+  });
+})();
+</script>
+</body>
+</html>
