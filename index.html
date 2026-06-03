@@ -895,10 +895,31 @@
   });
 })();
 
-// PWA: register the service worker (relative path so it works in a GitHub Pages subfolder)
+// PWA: register the service worker (relative path so it works in a GitHub Pages subfolder).
+// Auto-update: when a new service worker is found and installed, ask it to activate, and
+// reload once it takes control so the latest app version is shown without manual cache clearing.
 if('serviceWorker' in navigator){
   window.addEventListener('load', function(){
-    navigator.serviceWorker.register('sw.js').catch(function(){});
+    navigator.serviceWorker.register('sw.js').then(function(reg){
+      // check for updates on each load
+      reg.update();
+      function trackInstalling(sw){
+        sw.addEventListener('statechange', function(){
+          if(sw.state === 'installed' && navigator.serviceWorker.controller){
+            // a new version is ready; activate it immediately
+            sw.postMessage('skipWaiting');
+          }
+        });
+      }
+      if(reg.waiting && navigator.serviceWorker.controller){ reg.waiting.postMessage('skipWaiting'); }
+      reg.addEventListener('updatefound', function(){ if(reg.installing) trackInstalling(reg.installing); });
+    }).catch(function(){});
+
+    var reloaded=false;
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if(reloaded) return; reloaded=true;
+      window.location.reload();
+    });
   });
 }
 </script>
