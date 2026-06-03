@@ -157,8 +157,14 @@
   </div>
 
   <div class="trendCard card" style="border-radius:12px; padding:3.15vh 12px; flex:0.9 1 0; display:flex; flex-direction:column; min-height:150px;">
-    <div id="chartScroll" style="position:relative; flex:1 1 auto; min-height:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none;">
-      <div id="chartInner" style="position:relative; height:100%; cursor:pointer;"><canvas id="chart"></canvas></div>
+    <div id="chartArea" style="position:relative; flex:1 1 auto; min-height:0;">
+      <div id="chartScroll" style="position:absolute; inset:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none;">
+        <div id="chartInner" style="position:relative; height:100%; cursor:pointer;"><canvas id="chart"></canvas></div>
+      </div>
+      <!-- left fade: lightens scrolling content behind the fixed Y labels for contrast -->
+      <div id="yFade" style="position:absolute; left:0; top:0; bottom:0; width:46px; pointer-events:none; z-index:5; background:linear-gradient(to right, var(--card) 0%, var(--card) 46%, rgba(255,255,255,0.85) 70%, rgba(255,255,255,0) 100%);"></div>
+      <!-- fixed Y-axis on the topmost layer (does not scroll) -->
+      <canvas id="yAxis" style="position:absolute; left:0; top:0; height:100%; width:40px; pointer-events:none; z-index:6;"></canvas>
     </div>
     <div style="display:flex; justify-content:center; padding-top:6px; flex:0 0 auto;">
       <div style="display:inline-flex; align-items:center; gap:5px; font-size:15px; color:var(--blue-dk); background:var(--blue-chip); border-radius:999px; padding:4px 12px;">
@@ -456,6 +462,34 @@
 
   var chart;
 
+  // Draw the fixed Y-axis (labels + main line) onto the top overlay canvas, using the
+  // main chart's y-scale so it stays aligned with the (scrolling) grid lines.
+  function paintYAxis(){
+    var cv=document.getElementById('yAxis');
+    var host=document.getElementById('chartArea');
+    if(!cv || !host || !chart || !chart.scales || !chart.scales.y) return;
+    var ys=chart.scales.y;
+    var cssW=cv.offsetWidth, cssH=host.clientHeight;
+    if(!cssW || !cssH) return;
+    var dpr=window.devicePixelRatio||1;
+    cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr);
+    var g=cv.getContext('2d');
+    g.setTransform(dpr,0,0,dpr,0,0);
+    g.clearRect(0,0,cssW,cssH);
+    // labels at each 100 step (skip the bottom 400 to match the hidden bottom grid line)
+    g.fillStyle=MUTE; g.font='14px "DM Sans",sans-serif';
+    g.textAlign='right'; g.textBaseline='middle';
+    for(var v=500; v<=800; v+=100){
+      var y=ys.getPixelForValue(v);
+      if(!isFinite(y)) continue;
+      g.fillText(String(v), cssW-7, y);
+    }
+    // Y main line at the right edge of the gutter
+    g.strokeStyle='#9fbcc2'; g.lineWidth=1.5;
+    var top=ys.getPixelForValue(800), bot=ys.getPixelForValue(400);
+    g.beginPath(); g.moveTo(cssW-0.75, top); g.lineTo(cssW-0.75, bot); g.stroke();
+  }
+
   var justAdded=false;
   var noAnim=false;   // when true, render without any animation (e.g. slot selection)
   var animKey=null;   // slot key (dayKey_period) to animate with the line-extend effect
@@ -474,8 +508,9 @@
     } else {
       startDay=new Date(base.getTime()-2*864e5);
     }
-    // ensure at least a 3-day window
-    var minStart=new Date(base.getTime()-2*864e5);
+    // always allow going back at least 1 month (30 days) so past slots are editable
+    // even without existing records; extend further if older records exist.
+    var minStart=new Date(base.getTime()-30*864e5);
     if(startDay>minStart) startDay=minStart;
     var totalDays=Math.round((base-startDay)/864e5)+1;
     for(var di=0; di<totalDays; di++){
@@ -604,7 +639,7 @@
 
     function buildOpts(animOpt){
       return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-        layout:{padding:{top:62}},
+        layout:{padding:{top:62, left:34}},
         animation: animOpt,
         onClick:function(evt){
           var xs=chart.scales.x;
@@ -616,7 +651,7 @@
           if(idx<0) idx=0; if(idx>dayMeta.length-1) idx=dayMeta.length-1;
           selectSlot(idx);
         },
-        scales:{y:{min:400,max:800,ticks:{stepSize:100,color:MUTE,font:{size:14}},grid:{color:function(ctx){ return (ctx.tick && ctx.tick.value<=400)?'rgba(0,0,0,0)':'rgba(100,165,180,0.13)'; }},border:{display:true, color:'#9fbcc2', width:1.5}},
+        scales:{y:{min:400,max:800,ticks:{stepSize:100,display:false},grid:{color:function(ctx){ return (ctx.tick && ctx.tick.value<=400)?'rgba(0,0,0,0)':'rgba(100,165,180,0.13)'; }},border:{display:false}},
           x:{offset:true, ticks:{
               font:{size:17,weight:'600'}, maxRotation:0, autoSkip:false, align:'center',
               color:function(ctx){
@@ -650,6 +685,8 @@
       plugins:[fxPlugin],
       options:buildOpts((animNew || noAnim) ? {duration:0} : {duration:400})
     });
+
+    requestAnimationFrame(paintYAxis);
 
     // Scroll to the most recent (right) edge unless the user is editing a past slot,
     // in which case keep the selected slot in view. When keepScroll is set (e.g. after
