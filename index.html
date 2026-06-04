@@ -156,15 +156,18 @@
     </div>
   </div>
 
-  <div class="trendCard card" style="border-radius:12px; padding:3.15vh 12px; flex:0.9 1 0; display:flex; flex-direction:column; min-height:150px;">
-    <div id="chartArea" style="position:relative; flex:1 1 auto; min-height:0;">
-      <div id="chartScroll" style="position:absolute; inset:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none;">
-        <div id="chartInner" style="position:relative; height:100%; cursor:pointer;"><canvas id="chart"></canvas></div>
+  <div class="trendCard card" style="border-radius:12px; padding:3.15vh 18px; flex:0.9 1 0; display:flex; flex-direction:column; min-height:150px;">
+    <div id="monthLabel" style="text-align:center; font-family:'DM Sans',sans-serif; font-weight:700; font-size:21px; color:var(--blue-dk); flex:0 0 auto; height:28px; line-height:28px;"></div>
+    <div id="chartArea" style="position:relative; flex:1 1 auto; min-height:0; display:flex;">
+      <!-- fixed Y-axis column: never scrolls -->
+      <canvas id="yAxis" style="flex:0 0 auto; width:36px; height:100%;"></canvas>
+      <!-- scrolling plot column -->
+      <div id="chartScroll" style="position:relative; flex:1 1 auto; min-width:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none;">
+        <div id="chartInner" style="position:relative; height:100%; cursor:pointer; display:flex;"><div id="chartCanvasBox" style="position:relative; height:100%; flex:0 0 auto;"><canvas id="chart"></canvas></div></div>
       </div>
-      <!-- left fade: lightens scrolling content behind the fixed Y labels for contrast -->
-      <div id="yFade" style="position:absolute; left:0; top:0; bottom:0; width:46px; pointer-events:none; z-index:5; background:linear-gradient(to right, var(--card) 0%, var(--card) 46%, rgba(255,255,255,0.85) 70%, rgba(255,255,255,0) 100%);"></div>
-      <!-- fixed Y-axis on the topmost layer (does not scroll) -->
-      <canvas id="yAxis" style="position:absolute; left:0; top:0; height:100%; width:40px; pointer-events:none; z-index:6;"></canvas>
+      <!-- permanent right gap: a card-colored strip so the drawing keeps a constant right
+           padding at every scroll position (matches the initial right-edge framing) -->
+      <div id="rightGap" style="position:absolute; right:0; top:0; bottom:0; width:0; background:var(--card); pointer-events:none; z-index:5;"></div>
     </div>
     <div style="display:flex; justify-content:center; padding-top:6px; flex:0 0 auto;">
       <div style="display:inline-flex; align-items:center; gap:5px; font-size:15px; color:var(--blue-dk); background:var(--blue-chip); border-radius:999px; padding:4px 12px;">
@@ -462,32 +465,61 @@
 
   var chart;
 
+  // Update the fixed month label to the month shown at the center of the visible area.
+  function updateMonthLabel(){
+    var el=document.getElementById('monthLabel');
+    var scrollEl=document.getElementById('chartScroll');
+    if(!el || !scrollEl || !chart || !chart.scales || !chart.scales.x) return;
+    var xs=chart.scales.x;
+    var centerPx=scrollEl.scrollLeft + scrollEl.clientWidth/2;
+    // find the slot whose x is closest to the viewport center
+    var bestI=-1, bestD=1e9;
+    for(var i=0;i<curDayMeta.length;i++){
+      var x=xs.getPixelForValue(i);
+      if(!isFinite(x)) continue;
+      var d=Math.abs(x-centerPx);
+      if(d<bestD){ bestD=d; bestI=i; }
+    }
+    if(bestI>=0 && curDayMeta[bestI]){ el.textContent=curDayMeta[bestI].month+'月'; }
+    el.style.top='6px';
+  }
+
   // Draw the fixed Y-axis (labels + main line) onto the top overlay canvas, using the
   // main chart's y-scale so it stays aligned with the (scrolling) grid lines.
   function paintYAxis(){
     var cv=document.getElementById('yAxis');
-    var host=document.getElementById('chartArea');
-    if(!cv || !host || !chart || !chart.scales || !chart.scales.y) return;
+    var areaEl=document.getElementById('chartArea');
+    var chartCv=document.getElementById('chart');
+    if(!cv || !areaEl || !chartCv || !chart || !chart.chartArea) return;
+    var ca=chart.chartArea;              // plot box in chart-canvas CSS pixels (render-time)
     var ys=chart.scales.y;
-    var cssW=cv.offsetWidth, cssH=host.clientHeight;
-    if(!cssW || !cssH) return;
+    // Match the overlay height to the CHART CANVAS height so y-pixels line up exactly.
+    var cssW=cv.offsetWidth || 36;
+    var cssH=chartCv.clientHeight || areaEl.clientHeight;
+    if(!cssH) return;
+    // If the canvas display height has changed since the chart last rendered (e.g. mobile
+    // address bar show/hide grew the card without a chart re-render), scale render-space
+    // y-coordinates to the current height so the axis lines stay glued to the plot.
+    var renderH = chart.height || cssH;
+    var yScale = (renderH>0) ? (cssH/renderH) : 1;
+    var mapY=function(y){ return y*yScale; };
     var dpr=window.devicePixelRatio||1;
+    cv.style.height=cssH+'px';
     cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr);
     var g=cv.getContext('2d');
     g.setTransform(dpr,0,0,dpr,0,0);
     g.clearRect(0,0,cssW,cssH);
-    // labels at each 100 step (skip the bottom 400 to match the hidden bottom grid line)
+    // Y tick labels
     g.fillStyle=MUTE; g.font='14px "DM Sans",sans-serif';
     g.textAlign='right'; g.textBaseline='middle';
     for(var v=500; v<=800; v+=100){
-      var y=ys.getPixelForValue(v);
-      if(!isFinite(y)) continue;
-      g.fillText(String(v), cssW-7, y);
+      var y=ys?ys.getPixelForValue(v):null;
+      if(y==null||!isFinite(y)) continue;
+      g.fillText(String(v), cssW-6, mapY(y));
     }
-    // Y main line at the right edge of the gutter
-    g.strokeStyle='#9fbcc2'; g.lineWidth=1.5;
-    var top=ys.getPixelForValue(800), bot=ys.getPixelForValue(400);
-    g.beginPath(); g.moveTo(cssW-0.75, top); g.lineTo(cssW-0.75, bot); g.stroke();
+    // Y main line: from plot top to plot bottom (chart's own plot box)
+    g.strokeStyle='#9fbcc2'; g.lineWidth=1;
+    g.beginPath(); g.moveTo(cssW-0.5, Math.round(mapY(ca.top))+0.5); g.lineTo(cssW-0.5, Math.round(mapY(ca.bottom))+0.5); g.stroke();
   }
 
   var justAdded=false;
@@ -590,6 +622,15 @@
         });
         ctx.setLineDash([]);
         ctx.restore();
+        // X-axis main line = the plot bottom, drawn inside the chart so its VERTICAL position
+        // is always exactly the plot bottom (no drift). Horizontally it spans the plot; the
+        // fixed Y column masks its left end and the right-gap mask covers its right end, so it
+        // visually reads as a fixed axis even though the chart scrolls.
+        ctx.save();
+        ctx.strokeStyle='#9fbcc2'; ctx.lineWidth=1;
+        var xby=Math.round(area.bottom)+0.5;
+        ctx.beginPath(); ctx.moveTo(area.left, xby); ctx.lineTo(area.right, xby); ctx.stroke();
+        ctx.restore();
       },
       afterDatasetsDraw:function(c){
         var meta=c.getDatasetMeta(0);
@@ -600,19 +641,7 @@
         // Fixed slot x positions from the axis (NOT the point coords), so labels stay
         // put even while a point is animating.
         function slotX(i){ return xs ? xs.getPixelForValue(i) : (meta.data[i]?meta.data[i].x:0); }
-        // Month: large, drawn once per month run, centered over that month's days.
-        ctx.save();
-        ctx.font='700 21px "DM Sans",sans-serif'; ctx.fillStyle=BLUEDK;
-        ctx.textAlign='center'; ctx.textBaseline='alphabetic';
-        var runStart=0;
-        for(var i=0;i<=dayMeta.length;i++){
-          var changed = (i===dayMeta.length) || (dayMeta[i].month!==dayMeta[runStart].month);
-          if(changed){
-            if(dayMeta[runStart]){ ctx.fillText(dayMeta[runStart].month+'月', (slotX(runStart)+slotX(i-1))/2, top-44); }
-            runStart=i;
-          }
-        }
-        ctx.restore();
+        // (Month label is rendered as a fixed centered overlay, not on the scrolling canvas.)
         // Day numbers: smaller, centered over each day's 朝+夜 pair, below the month
         ctx.save();
         ctx.textBaseline='alphabetic';
@@ -639,7 +668,7 @@
 
     function buildOpts(animOpt){
       return {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
-        layout:{padding:{top:62, left:34}},
+        layout:{padding:{top:34, left:0, right:0}},
         animation: animOpt,
         onClick:function(evt){
           var xs=chart.scales.x;
@@ -659,7 +688,7 @@
                 if(dm){ if(dm.dow===0) return '#d36b6b'; if(dm.dow===6) return '#3a8fc9'; }
                 return MUTE;
               }
-            }, grid:{display:false}, border:{display:true, color:'#9fbcc2', width:1.5}}}};
+            }, grid:{display:false}, border:{display:false}}}};
     }
 
     if(chart) chart.destroy();
@@ -668,11 +697,31 @@
     // exist the wrapper grows wider and the container scrolls horizontally.
     var scrollEl=document.getElementById('chartScroll');
     var innerEl=document.getElementById('chartInner');
-    var contW=scrollEl ? scrollEl.clientWidth : 340;
+    var areaEl=document.getElementById('chartArea');
+    // Measure the scrolling plot column width (its own flex box, excludes the fixed
+    // Y-axis column), guarding against a transient pre-layout measurement.
+    var contW=0;
+    if(scrollEl && scrollEl.clientWidth) contW=scrollEl.clientWidth;
+    else if(areaEl && areaEl.clientWidth) contW=areaEl.clientWidth-36;
+    if(!contW) contW=300;
+    if(contW<160 && !render._retried){
+      render._retried=true;
+      requestAnimationFrame(function(){ render._retried=false; render(); });
+      return;
+    }
     var visibleSlots=DAYS_VISIBLE*slotsPerDay;
-    var innerW=contW;
-    if(totalSlots>visibleSlots){ innerW=Math.round(contW*(totalSlots/visibleSlots)); }
+    var PAD_L=0, PAD_R=0, PAD=PAD_L+PAD_R;     // must match layout.padding below
+    var band=(contW-PAD)/visibleSlots;         // canonical band width for the 3-day view
+    var innerW=(totalSlots>visibleSlots) ? Math.round(band*totalSlots + PAD) : contW;
+    // Permanent right gap = half a band: the same breathing room offset:true gives at the
+    // initial right-edge view. A fixed card-colored mask keeps this gap at EVERY scroll
+    // position so the drawing area looks identical whether or not the user has scrolled.
+    var RGAP=Math.round(band*0.3);   // ~60% of the previous half-band right padding
+    var gapEl=document.getElementById('rightGap');
+    if(gapEl) gapEl.style.width=RGAP+'px';
     if(innerEl) innerEl.style.width=innerW+'px';
+    var boxEl=document.getElementById('chartCanvasBox');
+    if(boxEl) boxEl.style.width=innerW+'px';
 
     chart=new Chart(document.getElementById('chart'),{
       type:'line',
@@ -686,25 +735,27 @@
       options:buildOpts((animNew || noAnim) ? {duration:0} : {duration:400})
     });
 
-    requestAnimationFrame(paintYAxis);
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){ paintYAxis(); updateMonthLabel(); }); });
 
     // Scroll to the most recent (right) edge unless the user is editing a past slot,
     // in which case keep the selected slot in view. When keepScroll is set (e.g. after
     // overwriting a past record), preserve the current scroll position so the edited
     // point does not jump out of view.
     var prevScroll = scrollEl ? scrollEl.scrollLeft : 0;
-    requestAnimationFrame(function(){
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
       if(!scrollEl) return;
+      var maxScroll = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth);
       if(keepScroll){
-        scrollEl.scrollLeft=prevScroll;
+        scrollEl.scrollLeft=Math.min(prevScroll, maxScroll);
       } else if(editSlot && selIdx>=0 && chart.scales.x){
         var px=chart.scales.x.getPixelForValue(selIdx);
-        scrollEl.scrollLeft=Math.max(0, px - scrollEl.clientWidth/2);
+        scrollEl.scrollLeft=Math.max(0, Math.min(px - scrollEl.clientWidth/2, maxScroll));
       } else {
-        scrollEl.scrollLeft=scrollEl.scrollWidth;
+        scrollEl.scrollLeft=maxScroll;   // exact true right edge
       }
       keepScroll=false;
-    });
+      updateMonthLabel();
+    }); });
 
     if(animNew){
       // Grow the segment: the target point travels from its PREVIOUS filled neighbor's
@@ -890,7 +941,18 @@
   if(loc && loc.lat){ fetchWeather(loc.lat,loc.lon); } else { acquireLocation(); }
 
   var rzT;
+  (function(){
+    var se=document.getElementById('chartScroll');
+    if(se){ se.addEventListener('scroll', function(){ updateMonthLabel(); paintYAxis(); }, {passive:true}); }
+  })();
+
+  var lastW=window.innerWidth;
   window.addEventListener('resize', function(){
+    // On mobile, scrolling shows/hides the address bar, firing resize with only a HEIGHT
+    // change. Re-rendering then re-measures the chart and shifts the grid/right edge.
+    // Only re-render when the width actually changed.
+    if(window.innerWidth===lastW) return;
+    lastW=window.innerWidth;
     clearTimeout(rzT); rzT=setTimeout(function(){ render(); },200);
   });
 })();
