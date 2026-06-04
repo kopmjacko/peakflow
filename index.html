@@ -706,7 +706,8 @@
     if(scrollEl && scrollEl.clientWidth) contW=scrollEl.clientWidth;
     else if(areaEl && areaEl.clientWidth) contW=areaEl.clientWidth-36;
     if(!contW) contW=300;
-    if(contW<160 && !render._retried){
+    var areaH0 = areaEl ? areaEl.clientHeight : 0;
+    if((contW<160 || areaH0<80) && !render._retried){
       render._retried=true;
       requestAnimationFrame(function(){ render._retried=false; render(); });
       return;
@@ -726,9 +727,14 @@
     // right at the left edge (Y axis). This removes the left gap structurally — no scroll
     // clamping needed — so bounce and reload can never reveal a gap.
     var LSHIFT=Math.round(band*0.5);
+    var hostH=areaEl?areaEl.clientHeight:0;
     var boxEl=document.getElementById('chartCanvasBox');
-    if(boxEl){ boxEl.style.width=innerW+'px'; boxEl.style.marginLeft=(-LSHIFT)+'px'; }
-    if(innerEl) innerEl.style.width=(innerW-LSHIFT)+'px';
+    if(boxEl){ boxEl.style.width=innerW+'px'; boxEl.style.marginLeft=(-LSHIFT)+'px'; if(hostH) boxEl.style.height=hostH+'px'; }
+    if(innerEl){ innerEl.style.width=(innerW-LSHIFT)+'px'; if(hostH) innerEl.style.height=hostH+'px'; }
+    // Pin the canvas display height so responsive Chart.js fills the measured area instead of
+    // growing the layout on reload (avoids a flex height-feedback loop that stretched the card).
+    var cvEl=document.getElementById('chart');
+    if(cvEl && hostH){ cvEl.style.height=hostH+'px'; }
 
     chart=new Chart(document.getElementById('chart'),{
       type:'line',
