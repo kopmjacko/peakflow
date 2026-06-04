@@ -658,11 +658,11 @@
         ctx.restore();
         // weather emoji above each filled point
         ctx.save();
-        ctx.font='14px "DM Sans",sans-serif';
+        ctx.font='21px "DM Sans",sans-serif';
         ctx.textAlign='center'; ctx.textBaseline='middle';
         meta.data.forEach(function(pt,i){
           var em=wxEmoji(slotWx[i]);
-          if(em && pt && data[i]!=null){ ctx.fillText(em, pt.x, pt.y-16); }
+          if(em && pt && data[i]!=null){ ctx.fillText(em, pt.x, pt.y-20); }
         });
         ctx.restore();
       }
