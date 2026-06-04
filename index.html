@@ -33,7 +33,7 @@
      viewport height and its main content flexes to fit without scrolling. */
   .wrap{
     max-width:420px; margin:0 auto;
-    height:100svh; height:100dvh;
+    height:100svh; height:100dvh; height:var(--app-h, 100dvh);
     padding:calc(env(safe-area-inset-top) + 1.2vh) 14px calc(env(safe-area-inset-bottom) + 1.2vh);
     display:flex; flex-direction:column;
   }
@@ -951,6 +951,12 @@
   });
 
   // init
+  // Lock the app height to a fixed pixel value from the actual window height. In a PWA
+  // (standalone) the dvh/svh units can resolve differently on reload, changing the layout
+  // height; a fixed px value set once keeps the graph area identical every launch/reload.
+  function setAppHeight(){ document.documentElement.style.setProperty('--app-h', window.innerHeight+'px'); }
+  setAppHeight();
+
   records=lsGet('peakflow:records')||[];
   loc=lsGet('peakflow:loc');
   reminders=lsGet('peakflow:reminders')||{};
@@ -972,11 +978,11 @@
 
   var lastW=window.innerWidth;
   window.addEventListener('resize', function(){
-    // On mobile, scrolling shows/hides the address bar, firing resize with only a HEIGHT
-    // change. Re-rendering then re-measures the chart and shifts the grid/right edge.
-    // Only re-render when the width actually changed.
+    // Only react to WIDTH changes (e.g. rotation). Height-only changes (mobile address bar
+    // show/hide) are ignored so the locked app height and chart don't fluctuate.
     if(window.innerWidth===lastW) return;
     lastW=window.innerWidth;
+    setAppHeight();
     clearTimeout(rzT); rzT=setTimeout(function(){ render(); },200);
   });
 })();
