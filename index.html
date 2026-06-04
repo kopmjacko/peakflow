@@ -77,7 +77,7 @@
   <div class="topbar">
     <div style="display:flex; align-items:center; gap:10px;">
       <div class="logo-badge"><i class="ti ti-lungs" style="font-size:17px;"></i></div>
-      <span class="title">ピークフロー</span>
+      <span class="title">PEAKFLOW</span>
     </div>
     <div id="menuAnchor">
       <button id="menuBtn" class="iconbtn" aria-label="メニューを開く"><i class="ti ti-menu-2"></i></button>
@@ -851,15 +851,16 @@
         keepScroll=true;                 // don't jump the view; keep the edited point in place
         justAdded=false; exitEdit(); render(); celebrate();
       }
-      if(existing && existing.wx && existing.wx!=='—' && existing.wx!=='不明'){
-        commit(existing.wx);            // keep already-known weather
-      } else if(isToday){
+      if(isToday){
         commit(currentWx);              // today: current weather already fetched
       } else {
-        commit('取得中…');              // show immediately (commit already renders once)
+        // Past slot: always re-fetch the actual weather for that date/time, even if a
+        // (possibly wrong) value already exists — re-saving is how the user corrects it.
+        commit(existing && existing.wx ? existing.wx : '取得中…');
         fetchWeatherForDate(d, per, function(wx){
+          if(!wx || wx==='—' || wx==='不明') return;   // keep the prior value if fetch failed
           var t=records.filter(function(r){ return dayKey(new Date(r.ts))===dk && r.period===per; })[0];
-          if(t){ t.wx=wx; lsSet('peakflow:records',records); noAnim=true; keepScroll=true; render(); }  // weather fill: no animation, keep view
+          if(t){ t.wx=wx; lsSet('peakflow:records',records); noAnim=true; keepScroll=true; render(); }
         });
       }
     } else {
