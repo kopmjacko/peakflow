@@ -162,7 +162,7 @@
       <!-- fixed Y-axis column: never scrolls -->
       <canvas id="yAxis" style="flex:0 0 auto; width:36px; height:100%;"></canvas>
       <!-- scrolling plot column -->
-      <div id="chartScroll" style="position:relative; flex:1 1 auto; min-width:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; -ms-overflow-style:none;">
+      <div id="chartScroll" style="position:relative; flex:1 1 auto; min-width:0; overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; overscroll-behavior-x:contain; scrollbar-width:none; -ms-overflow-style:none;">
         <div id="chartInner" style="position:relative; height:100%; cursor:pointer; display:flex;"><div id="chartCanvasBox" style="position:relative; height:100%; flex:0 0 auto;"><canvas id="chart"></canvas></div></div>
       </div>
       <!-- permanent right gap: a card-colored strip so the drawing keeps a constant right
@@ -497,35 +497,35 @@
     var cssW=cv.offsetWidth || 36;
     var cssH=chartCv.clientHeight || areaEl.clientHeight;
     if(!cssH) return;
-    // If the canvas display height has changed since the chart last rendered (e.g. mobile
-    // address bar show/hide grew the card without a chart re-render), scale render-space
-    // y-coordinates to the current height so the axis lines stay glued to the plot.
-    var renderH = chart.height || cssH;
-    var yScale = (renderH>0) ? (cssH/renderH) : 1;
-    var mapY=function(y){ return y*yScale; };
     var dpr=window.devicePixelRatio||1;
     cv.style.height=cssH+'px';
     cv.width=Math.round(cssW*dpr); cv.height=Math.round(cssH*dpr);
     var g=cv.getContext('2d');
     g.setTransform(dpr,0,0,dpr,0,0);
     g.clearRect(0,0,cssW,cssH);
-    // Y tick labels
+    // Y tick labels only. The Y main line itself is drawn INSIDE the chart (plot-left
+    // border) together with the X main line, so both share the same coordinate space and
+    // always meet exactly at the origin.
     g.fillStyle=MUTE; g.font='14px "DM Sans",sans-serif';
     g.textAlign='right'; g.textBaseline='middle';
     for(var v=500; v<=800; v+=100){
       var y=ys?ys.getPixelForValue(v):null;
       if(y==null||!isFinite(y)) continue;
-      g.fillText(String(v), cssW-6, mapY(y));
+      g.fillText(String(v), cssW-6, y);
     }
-    // Y main line: from plot top to plot bottom (chart's own plot box)
+    // Y main line on the overlay. Both the overlay and the chart canvas share the same top
+    // and height, so the chart's plot box pixels map 1:1. Draw to the plot bottom (same value
+    // the in-chart X line uses) so they meet at the origin.
     g.strokeStyle='#9fbcc2'; g.lineWidth=1;
-    g.beginPath(); g.moveTo(cssW-0.5, Math.round(mapY(ca.top))+0.5); g.lineTo(cssW-0.5, Math.round(mapY(ca.bottom))+0.5); g.stroke();
+    var yx=cssW-0.5;
+    g.beginPath(); g.moveTo(yx, Math.round(ca.top)+0.5); g.lineTo(yx, Math.round(ca.bottom)+0.5); g.stroke();
   }
 
   var justAdded=false;
   var noAnim=false;   // when true, render without any animation (e.g. slot selection)
   var animKey=null;   // slot key (dayKey_period) to animate with the line-extend effect
   var keepScroll=false; // when true, preserve current horizontal scroll (don't jump)
+  var curMinScroll=0;   // left scroll floor so the oldest-side gap matches the right gap
   function render(){
     var sorted=records.slice().sort(function(a,b){return a.ts-b.ts;});
 
@@ -629,7 +629,9 @@
         ctx.save();
         ctx.strokeStyle='#9fbcc2'; ctx.lineWidth=1;
         var xby=Math.round(area.bottom)+0.5;
-        ctx.beginPath(); ctx.moveTo(area.left, xby); ctx.lineTo(area.right, xby); ctx.stroke();
+        // X main line spans the plot; its left end is hidden under the fixed Y column and its
+        // right end under the right-gap mask, so it reads as a fixed axis while scrolling.
+        ctx.beginPath(); ctx.moveTo(area.left-20, xby); ctx.lineTo(area.right, xby); ctx.stroke();
         ctx.restore();
       },
       afterDatasetsDraw:function(c){
@@ -719,9 +721,14 @@
     var RGAP=Math.round(band*0.3);   // ~60% of the previous half-band right padding
     var gapEl=document.getElementById('rightGap');
     if(gapEl) gapEl.style.width=RGAP+'px';
-    if(innerEl) innerEl.style.width=innerW+'px';
+    // offset:true leaves a half-band of empty space before the first point. Pull the canvas
+    // left by half a band and shrink the scroll content to match, so the first point sits
+    // right at the left edge (Y axis). This removes the left gap structurally — no scroll
+    // clamping needed — so bounce and reload can never reveal a gap.
+    var LSHIFT=Math.round(band*0.5);
     var boxEl=document.getElementById('chartCanvasBox');
-    if(boxEl) boxEl.style.width=innerW+'px';
+    if(boxEl){ boxEl.style.width=innerW+'px'; boxEl.style.marginLeft=(-LSHIFT)+'px'; }
+    if(innerEl) innerEl.style.width=(innerW-LSHIFT)+'px';
 
     chart=new Chart(document.getElementById('chart'),{
       type:'line',
@@ -736,6 +743,11 @@
     });
 
     requestAnimationFrame(function(){ requestAnimationFrame(function(){ paintYAxis(); updateMonthLabel(); }); });
+    // Re-lock the axes after layout/fonts fully settle (reload can leave chartArea not yet
+    // final on the first frames, which would draw the Y line short of the X line).
+    setTimeout(function(){ paintYAxis(); updateMonthLabel(); }, 120);
+    setTimeout(function(){ paintYAxis(); }, 400);
+    if(document.fonts && document.fonts.ready){ document.fonts.ready.then(function(){ paintYAxis(); }); }
 
     // Scroll to the most recent (right) edge unless the user is editing a past slot,
     // in which case keep the selected slot in view. When keepScroll is set (e.g. after
@@ -745,11 +757,13 @@
     requestAnimationFrame(function(){ requestAnimationFrame(function(){
       if(!scrollEl) return;
       var maxScroll = Math.max(0, scrollEl.scrollWidth - scrollEl.clientWidth);
+      curMinScroll = 0;
+      var clamp=function(v){ return Math.max(0, Math.min(v, maxScroll)); };
       if(keepScroll){
-        scrollEl.scrollLeft=Math.min(prevScroll, maxScroll);
+        scrollEl.scrollLeft=clamp(prevScroll);
       } else if(editSlot && selIdx>=0 && chart.scales.x){
         var px=chart.scales.x.getPixelForValue(selIdx);
-        scrollEl.scrollLeft=Math.max(0, Math.min(px - scrollEl.clientWidth/2, maxScroll));
+        scrollEl.scrollLeft=clamp(px - scrollEl.clientWidth/2);
       } else {
         scrollEl.scrollLeft=maxScroll;   // exact true right edge
       }
@@ -943,7 +957,12 @@
   var rzT;
   (function(){
     var se=document.getElementById('chartScroll');
-    if(se){ se.addEventListener('scroll', function(){ updateMonthLabel(); paintYAxis(); }, {passive:true}); }
+    if(se){ se.addEventListener('scroll', function(){
+      // keep the oldest-side gap equal to the right gap: don't allow scrolling left past
+      // the floor (mirrors the right padding). curMinScroll is set during render.
+      if(typeof curMinScroll==='number' && se.scrollLeft < curMinScroll){ se.scrollLeft=curMinScroll; }
+      updateMonthLabel(); paintYAxis();
+    }, {passive:true}); }
   })();
 
   var lastW=window.innerWidth;
