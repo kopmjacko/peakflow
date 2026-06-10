@@ -108,6 +108,15 @@
 
         <div style="border-top:1px solid var(--line); margin-top:12px; padding-top:12px;">
           <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+            <i class="ti ti-map-pin" style="font-size:16px; color:var(--mute);"></i><span style="font-size:14px; font-weight:700;">天気の取得場所</span>
+          </div>
+          <div id="locNote" style="font-size:12px; color:var(--mute); line-height:1.5; margin-bottom:8px;">—</div>
+          <button id="relocBtn" style="width:100%; height:38px; font-size:13px; border:1px solid #d4e8ec; background:var(--blue-bg); color:var(--blue-dk); border-radius:8px; display:flex; align-items:center; justify-content:center; gap:5px;"><i class="ti ti-current-location" style="font-size:15px;"></i>現在地を取得し直す</button>
+          <div style="font-size:11px; color:var(--faint); margin-top:8px; line-height:1.5;">天気はこの場所の情報を使います。違う場所が表示される場合は取得し直してください（位置情報の許可が必要です）。</div>
+        </div>
+
+        <div style="border-top:1px solid var(--line); margin-top:12px; padding-top:12px;">
+          <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
             <i class="ti ti-database-export" style="font-size:16px; color:var(--mute);"></i><span style="font-size:14px; font-weight:700;">データのバックアップ</span>
           </div>
           <div style="display:flex; gap:8px;">
@@ -211,6 +220,8 @@
   scrim.addEventListener('click', closeDrawer);
   drawer.addEventListener('click', function(e){ e.stopPropagation(); });
 
+  document.getElementById('relocBtn').addEventListener('click', function(){ acquireLocation(); });
+
   // Data backup: export to a JSON file the user keeps; import to restore.
   document.getElementById('exportBtn').addEventListener('click', function(){
     var payload={ app:'peakflow', version:1, exportedAt:new Date().toISOString(),
@@ -286,7 +297,7 @@
   document.getElementById('periodToggle').addEventListener('click',function(){
     if(editSlot){ exitEdit(); render(); }
   });
-  setPeriod(new Date().getHours()<12?'朝':'夜');
+  setPeriod(jstPeriod());
 
   // Tap a 朝/夜 zone on the graph to edit that slot with the record UI above.
   function selectSlot(idx){
@@ -306,7 +317,7 @@
   }
   function exitEdit(){
     editSlot=null;
-    setPeriod(new Date().getHours()<12?'朝':'夜');
+    setPeriod(jstPeriod());
     updateSaveLabel(null);
   }
   function updateSaveLabel(existing){
@@ -325,6 +336,15 @@
   }
 
   function p2(n){return (n<10?'0':'')+n;}
+  // Always evaluate "now" in Japan Standard Time (UTC+9), independent of the device's
+  // timezone, so the record date and 朝/夜 period are correct even on a misconfigured clock.
+  function nowJST(){
+    var n=new Date();
+    // shift the UTC time by +9h, then read the UTC fields as if they were local JST fields
+    return new Date(n.getTime() + (n.getTimezoneOffset()*60000) + (9*3600000));
+  }
+  function jstHour(){ return nowJST().getHours(); }
+  function jstPeriod(){ return jstHour()<12?'朝':'夜'; }
   function fmtNow(d){ return d.getFullYear()+'/'+p2(d.getMonth()+1)+'/'+p2(d.getDate())+' '+p2(d.getHours())+':'+p2(d.getMinutes()); }
   function dayKey(d){ return d.getFullYear()+'-'+p2(d.getMonth()+1)+'-'+p2(d.getDate()); }
 
@@ -440,13 +460,22 @@
     if(useArchive){ tryFetch(archiveURL(), forecastURL()); }
     else { tryFetch(forecastURL(), archiveURL()); }
   }
-  function useLoc(lat,lon){ loc={lat:lat,lon:lon}; lsSet('peakflow:loc',loc); fetchWeather(lat,lon); }
+  function useLoc(lat,lon){ loc={lat:lat,lon:lon}; lsSet('peakflow:loc',loc); renderLocNote(); fetchWeather(lat,lon); }
+  function renderLocNote(){
+    var el=document.getElementById('locNote'); if(!el) return;
+    if(loc && loc.lat){
+      el.innerHTML='緯度 '+loc.lat+' / 経度 '+loc.lon+'<br>（この地点の天気を表示しています）';
+    } else {
+      el.textContent='未取得（東京の天気を仮表示）';
+    }
+  }
   function acquireLocation(){
+    var el=document.getElementById('locNote'); if(el) el.textContent='現在地を取得中…';
     if(navigator.geolocation){
       navigator.geolocation.getCurrentPosition(
         function(p){ useLoc(p.coords.latitude.toFixed(3),p.coords.longitude.toFixed(3)); },
-        function(){ fetchWeather(35.681,139.686); }, {timeout:8000,enableHighAccuracy:true});
-    } else { fetchWeather(35.681,139.686); }
+        function(){ if(el) el.textContent='取得できませんでした（東京の天気を仮表示）。位置情報の許可をご確認ください。'; fetchWeather(35.681,139.686); }, {timeout:8000,enableHighAccuracy:true});
+    } else { if(el) el.textContent='この端末では位置情報を利用できません。'; fetchWeather(35.681,139.686); }
   }
 
   // Reminders via Notification API (works while page/PWA is open or backgrounded on supporting browsers)
@@ -562,7 +591,7 @@
     // through today. Each day has 朝 then 夜 slots. The chart canvas is made wider
     // than its container so the user can scroll left to go back in time.
     var dayList=[];
-    var base=new Date(); base=new Date(base.getFullYear(),base.getMonth(),base.getDate());
+    var base=nowJST(); base=new Date(base.getFullYear(),base.getMonth(),base.getDate());
     var startDay;
     if(sorted.length){
       var first=new Date(sorted[0].ts); startDay=new Date(first.getFullYear(),first.getMonth(),first.getDate());
@@ -804,8 +833,8 @@
         // Land on the CURRENT slot (today + current period). In the morning this is today 朝,
         // so we don't scroll past it to the still-future 夜 slot. Position it near the right
         // edge (just inside the right gap) like the newest meaningful entry.
-        var nowD=new Date();
-        var curKey=dayKey(nowD)+'_'+(nowD.getHours()<12?'朝':'夜');
+        var nowD=nowJST();
+        var curKey=dayKey(nowD)+'_'+jstPeriod();
         var curIdx=(slotIndex[curKey]!=null)?slotIndex[curKey]:-1;
         if(curIdx>=0 && chart.scales.x){
           var cpx=chart.scales.x.getPixelForValue(curIdx);
@@ -881,7 +910,7 @@
       var existing=null;
       records.forEach(function(r){ if(dayKey(new Date(r.ts))===dk && r.period===per) existing=r; });
       var when = existing ? new Date(existing.ts) : new Date(d.getFullYear(),d.getMonth(),d.getDate(), per==='朝'?9:21, 0, 0);
-      var isToday = (dk===dayKey(new Date()));
+      var isToday = (dk===dayKey(nowJST()));
 
       function commit(wx){
         records=records.filter(function(r){ return !(dayKey(new Date(r.ts))===dk && r.period===per); });
@@ -1006,9 +1035,9 @@
   reminders=lsGet('peakflow:reminders')||{};
   if(reminders.morning) document.getElementById('morningTime').value=reminders.morning;
   if(reminders.night) document.getElementById('nightTime').value=reminders.night;
-  setPeriod(new Date().getHours()<12?'朝':'夜');   // ensure current period before first paint
+  setPeriod(jstPeriod());   // ensure current period before first paint
   updateStreakChip(); noAnim=true; render(); renderReminderNote();
-  if(loc && loc.lat){ fetchWeather(loc.lat,loc.lon); } else { acquireLocation(); }
+  if(loc && loc.lat){ renderLocNote(); fetchWeather(loc.lat,loc.lon); } else { acquireLocation(); }
 
   var rzT;
   (function(){
